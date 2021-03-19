@@ -4,7 +4,7 @@ from asyncio import CancelledError, Event, ensure_future, sleep
 from aiogram import Bot
 from aiohubot import Adapter
 
-__version__ = "0.1.0"
+__version__ = '0.1.0'
 
 
 class Telegram(Adapter):
