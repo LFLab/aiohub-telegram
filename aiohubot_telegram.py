@@ -122,6 +122,9 @@ class Telegram(Adapter):
         self.robot.logger.debug("Adapter closing...")
         self.stream.cancel()
         self.stream = None
+        loop = self.robot._loop
+        if not loop.is_running():
+            loop.run_until_complete(self.bot.session.close())
 
     def _handle_unsupported(self, update):
         for name in UNSUPPORTED_FIELDS:
