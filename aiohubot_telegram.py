@@ -25,14 +25,14 @@ class Telegram(Adapter):
     async def send(self, envelope, *strings):
         msg, user = envelope['message'], envelope['user']
         if hasattr(msg, 'origin'):
-            msg.origin.answer("\n".join(strings))
+            await msg.origin.answer("\n".join(strings))
         else:
             self.robot.logger.warning("Not support, use raw bot directly.")
 
     async def reply(self, envelope, *strings):
         msg, user = envelope['message'], envelope['user']
         if hasattr(msg, 'origin'):
-            msg.origin.reply("\n".join(strings))
+            await msg.origin.reply("\n".join(strings))
         else:
             self.robot.logger.warning("Not support, use raw bot directly.")
 
@@ -41,9 +41,9 @@ class Telegram(Adapter):
             err_msg = "environment `HUBOT_TELEGRAM_TOKEN` is required."
             raise AttributeError(err_msg)
 
-        self.bot = Bot(self.api_token, relax=self.interval)
+        self.bot = Bot(self.api_token)
         Bot.set_current(self.bot)
-        me = await self.bot.get_me()
+        me = await self.bot.me
         self.robot.logger.info("Connected to Telegram as Bot"
                                f" {me.first_name}(@{me.username})")
 
@@ -57,7 +57,7 @@ class Telegram(Adapter):
         self.stream = ensure_future(self._start_polling())
         self.emit("connected")
 
-    async def _start_polling(self, timeout=20, reset_webhook=True):
+    async def _start_polling(self, timeout=10, reset_webhook=True):
         if reset_webhook:
             await self.bot.delete_webhook()
 
@@ -65,7 +65,8 @@ class Telegram(Adapter):
         while self._polling.is_set():
             try:
                 with self.bot.request_timeout(timeout):
-                    updates = await self.bot.get_updates()
+                    updates = await self.bot.get_updates(offset=self._offset,
+                                                         timeout=timeout)
             except CancelledError:
                 self.emit("disconnected")
                 self.robot.logger.debug("Telegram: Polling Received Cancellation.")
@@ -77,7 +78,7 @@ class Telegram(Adapter):
             else:
                 if updates:
                     self._offset = updates[-1].update_id + 1
-                ensure_future(self.handle_updates(*upates))
+                ensure_future(self.handle_updates(*updates))
                 await sleep(self.interval)
         self.robot.logger.info("Telegram: Stop polling...")
 
@@ -88,9 +89,9 @@ class Telegram(Adapter):
             msg = (update.message or update.edited_message
                    or update.channel_post or update.edited_channel_post)
             if msg:
-                user = self.robot.brain.user_for_id(**msg.from_user)
+                user = self.robot.brain.user_for_id(**dict(msg.from_user))
                 changed = self.diff_user(user, msg.from_user, update=True)
-                hubot_msg = self._msg_reformat(msg.text)
+                hubot_msg = self._msg_reformat(msg)
                 msg_obj = TextMessage(user, hubot_msg, msg.message_id)
                 msg_obj.origin = msg
                 futs.append(self.receive(msg_obj))
@@ -118,7 +119,9 @@ class Telegram(Adapter):
         return changed
 
     def close(self):
+        self.robot.logger.debug("Adapter closing...")
         self.stream.cancel()
+        self.stream = None
 
     def _handle_unsupported(self, update):
         for name in UNSUPPORTED_FIELDS:
@@ -138,7 +141,7 @@ class Telegram(Adapter):
 
     def _msg_reformat(self, msg):
         bot_prefix = f"{self.robot.name}:"
-        hubot_msg = re.sub(fr"^@{self.bot.username}(,\\b)",
+        hubot_msg = re.sub(fr"^@{self.bot._me.username}(,\\b)",
                            bot_prefix, msg.text, flags=re.I)
         if (not re.match(fr"^{self.robot.name}", hubot_msg, re.I)
             and msg.chat.type == "private"):
