@@ -17,7 +17,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/LFLab/aiohubot-telegram",
     py_modules=["aiohubot_telegram"],
-    install_requires=["aiohubot", "aiogram"],
+    install_requires=["aiohubot", "aiogram>=2.*, <3"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
